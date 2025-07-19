@@ -65,6 +65,46 @@ impl LeetCodeApi {
         Ok(data.question)
     }
 
+    /// Verify authentication by checking user profile
+    pub fn verify_authentication(&self, session_cookie: &str) -> Result<bool> {
+        let query = r#"{
+            "query": "query globalData { 
+                userStatus { 
+                    isSignedIn 
+                    username 
+                } 
+            }"
+        }"#;
+
+        let mut cmd = Command::new("curl");
+        cmd.args(["-s", "-X", "POST", LEETCODE_GRAPHQL_URL])
+            .args(["-H", "Content-Type: application/json"])
+            .args(["-H", "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"])
+            .args(["-H", &format!("Cookie: {}", session_cookie)])
+            .args(["-d", query]);
+
+        let output = cmd.output()
+            .context("Failed to execute authentication curl command")?;
+
+        if !output.status.success() {
+            return Ok(false);
+        }
+
+        let response = String::from_utf8(output.stdout)
+            .context("Failed to parse authentication response as UTF-8")?;
+
+        // Parse response to check if user is signed in
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response) {
+            if let Some(user_status) = json.get("data").and_then(|d| d.get("userStatus")) {
+                if let Some(is_signed_in) = user_status.get("isSignedIn") {
+                    return Ok(is_signed_in.as_bool().unwrap_or(false));
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
     /// Execute GraphQL query using curl
     fn execute_graphql_query(&self, query: &str) -> Result<String> {
         let mut cmd = Command::new("curl");

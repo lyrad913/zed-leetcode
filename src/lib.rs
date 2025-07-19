@@ -3,6 +3,7 @@ use zed_extension_api as zed;
 pub mod commands;
 pub mod models;
 pub mod api;
+pub mod auth;
 pub mod templates;
 pub mod file_manager;
 

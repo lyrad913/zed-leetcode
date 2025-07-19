@@ -1,5 +1,7 @@
 use zed_extension_api::{SlashCommandOutput, Worktree};
 use crate::templates::TemplateGenerator;
+use crate::auth::AuthManager;
+use crate::api::LeetCodeApi;
 
 /// Handle /leetcode-login command
 /// Authenticates user with LeetCode session cookie
@@ -8,12 +10,54 @@ pub fn handle_login(args: Vec<String>) -> Result<SlashCommandOutput, String> {
         return Err("Session cookie is required. Usage: /leetcode-login <session-cookie>".to_string());
     }
     
-    // TODO: Implement actual authentication logic with FileManager
-    // For now, just return success message
-    Ok(SlashCommandOutput {
-        text: format!("Login attempt with session cookie (length: {}). Authentication integration pending.", args[0].len()),
-        sections: vec![],
-    })
+    let session_cookie = &args[0];
+    
+    // Use current directory as fallback for config
+    let config_dir = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?
+        .join(".leetcode");
+    
+    let auth_manager = AuthManager::new(&config_dir);
+    
+    // Verify session cookie with API
+    let api = LeetCodeApi::with_session(session_cookie.clone());
+    match api.verify_authentication(session_cookie) {
+        Ok(true) => {
+            // Save session if valid
+            match auth_manager.save_session(session_cookie) {
+                Ok(_) => Ok(SlashCommandOutput {
+                    text: "Successfully logged in to LeetCode! Session saved securely.".to_string(),
+                    sections: vec![],
+                }),
+                Err(e) => Err(format!("Authentication successful but failed to save session: {}", e)),
+            }
+        },
+        Ok(false) => Err("Invalid session cookie. Please check your session cookie from browser.".to_string()),
+        Err(e) => Err(format!("Failed to verify session: {}", e)),
+    }
+}
+
+/// Helper function to check if user is authenticated
+pub fn is_user_authenticated() -> bool {
+    let config_dir = match std::env::current_dir() {
+        Ok(dir) => dir.join(".leetcode"),
+        Err(_) => return false,
+    };
+    
+    let auth_manager = AuthManager::new(&config_dir);
+    let api = LeetCodeApi::new();
+    auth_manager.is_authenticated(&api)
+}
+
+/// Helper function to get current session cookie
+pub fn get_current_session() -> Option<String> {
+    let config_dir = match std::env::current_dir() {
+        Ok(dir) => dir.join(".leetcode"),
+        Err(_) => return None,
+    };
+    
+    let auth_manager = AuthManager::new(&config_dir);
+    auth_manager.get_session_cookie().ok().flatten()
 }
 
 /// Handle /leetcode-list command  
@@ -123,10 +167,35 @@ mod tests {
         let args = vec!["session_cookie_123".to_string()];
         let result = handle_login(args);
         
-        assert!(result.is_ok());
-        let output = result.unwrap();
-        assert!(output.text.contains("length: 18")); // session_cookie_123 has length 18
-        assert!(output.text.contains("Authentication integration pending"));
+        // Debug: print the error if it occurs
+        if let Err(ref error) = result {
+            println!("Login error: {}", error);
+        }
+        
+        // For now, expect the real API call to fail in testing
+        // but let's check the error message structure
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Failed to verify session") || error_msg.contains("Invalid session cookie"));
+    }
+
+    #[test]
+    fn test_helper_functions() {
+        // Test authentication helper functions
+        // These will return false/None in test environment but shouldn't panic
+        assert_eq!(is_user_authenticated(), false);
+        assert_eq!(get_current_session(), None);
+    }
+
+    #[test]
+    fn test_handle_login_empty_cookie() {
+        let args = vec!["".to_string()];
+        let result = handle_login(args);
+        
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        // Empty cookie should still trigger API verification which will fail
+        assert!(error_msg.contains("Failed to verify session") || error_msg.contains("Invalid session cookie"));
     }
 
     #[test]
