@@ -186,14 +186,14 @@
       "name": "문제 목록 및 상세 조회 기능 구현",
       "description": "/leetcode-list와 /leetcode-show 명령어를 완전히 구현합니다. 난이도, 태그, 회사별 필터링 기능과 문제 상세 정보 조회 및 코드 템플릿 파일 생성 기능을 포함합니다.",
       "notes": "문제 목록은 페이지네이션을 고려하여 기본적으로 50개씩 표시하고, 추가 로딩은 별도 옵션으로 제공합니다.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "6ef768d9-3e94-43a2-8849-eb5da88b2a1b"
         }
       ],
       "createdAt": "2025-07-19T04:01:01.148Z",
-      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T06:24:18.370Z",
       "relatedFiles": [
         {
           "path": "src/commands.rs",
@@ -215,7 +215,9 @@
       ],
       "implementationGuide": "1. /leetcode-list 명령어 구현:\\n   ```rust\\n   fn handle_list(&self, args: Vec<String>) -> Result<SlashCommandOutput, String> {\\n       let filters = parse_list_filters(args);\\n       let problems = self.api.fetch_problems(filters)?;\\n       let output = format_problems_list(problems);\\n       Ok(SlashCommandOutput { text: output, sections: vec![] })\\n   }\\n   ```\\n\\n2. 필터링 옵션 파싱:\\n   - --difficulty easy|medium|hard\\n   - --tag array,string,dp\\n   - --company google,facebook\\n   - --status todo|solved\\n\\n3. /leetcode-show 명령어 구현:\\n   - 문제 ID 또는 제목으로 검색\\n   - 문제 상세 정보 표시 (설명, 예제, 제약조건)\\n   - 선택한 언어로 코드 템플릿 파일 생성\\n   - 파일 경로를 출력에 포함\\n\\n4. 출력 포맷팅:\\n   - 문제 목록을 테이블 형태로 표시\\n   - 난이도별 색상 구분 (markdown)\\n   - 문제 상세는 markdown 형식으로 구조화",
       "verificationCriteria": "/leetcode-list로 필터링된 문제 목록을 조회할 수 있고, /leetcode-show로 특정 문제의 상세 정보를 확인하며 해당 언어의 템플릿 파일이 생성되는지 확인",
-      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택.",
+      "summary": "문제 목록 및 상세 조회 기능이 성공적으로 구현되었습니다. /leetcode-list 명령어는 난이도, 태그, 회사, 제한 수 등의 필터링을 지원하며, 마크다운 테이블 형태로 문제를 표시합니다. /leetcode-show 명령어는 문제 상세 정보를 조회하고 선택된 언어로 솔루션 템플릿을 자동 생성합니다. 인증이 필수적이며, HTML을 텍스트로 변환하는 기능과 함께 파일 시스템에 솔루션 파일을 생성합니다. 모든 49개 테스트가 통과하여 완전한 TDD 구현이 검증되었습니다.",
+      "completedAt": "2025-07-19T06:24:18.366Z"
     },
     {
       "id": "dd40313e-4f33-420b-affb-c8361fb6c2f2",
