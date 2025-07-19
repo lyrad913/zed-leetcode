@@ -1,6 +1,8 @@
 use zed_extension_api as zed;
 
-mod commands;
+pub mod commands;
+pub mod models;
+pub mod api;
 
 struct LeetCodeExtension;
 
