@@ -95,19 +95,83 @@ pub struct GraphQLResponse<T> {
     pub errors: Option<Vec<GraphQLError>>,
 }
 
-/// GraphQL error structure
-#[derive(Debug, Deserialize)]
-pub struct GraphQLError {
-    pub message: String,
-    pub locations: Option<Vec<ErrorLocation>>,
-    pub path: Option<Vec<serde_json::Value>>,
+/// Test execution status
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum TestStatus {
+    Success,
+    CompileError,
+    RuntimeError,
+    TimeLimitExceeded,
+    MemoryLimitExceeded,
+    WrongAnswer,
+    UnknownError,
 }
 
-/// Error location in GraphQL query
-#[derive(Debug, Deserialize)]
-pub struct ErrorLocation {
-    pub line: i32,
-    pub column: i32,
+impl std::fmt::Display for TestStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TestStatus::Success => write!(f, "✅ All tests passed"),
+            TestStatus::CompileError => write!(f, "❌ Compile Error"),
+            TestStatus::RuntimeError => write!(f, "❌ Runtime Error"),
+            TestStatus::TimeLimitExceeded => write!(f, "⏰ Time Limit Exceeded"),
+            TestStatus::MemoryLimitExceeded => write!(f, "💾 Memory Limit Exceeded"),
+            TestStatus::WrongAnswer => write!(f, "❌ Wrong Answer"),
+            TestStatus::UnknownError => write!(f, "❓ Unknown Error"),
+        }
+    }
+}
+
+/// Test execution result
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TestResult {
+    pub status: TestStatus,
+    pub runtime: Option<u32>,  // milliseconds
+    pub memory: Option<f64>,   // MB
+    pub passed_tests: u32,
+    pub total_tests: u32,
+    pub failed_test_case: Option<String>,
+    pub compile_error: Option<String>,
+}
+
+/// Test execution response data structure
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TestExecutionData {
+    #[serde(rename = "interpretSolution")]
+    pub interpret_solution: Option<TestSubmissionResult>,
+}
+
+/// Test submission result from API
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TestSubmissionResult {
+    #[serde(rename = "submissionId")]
+    pub submission_id: String,
+    #[serde(rename = "statusCode")]
+    pub status_code: u32,
+    pub status: String,
+    pub runtime: Option<String>,
+    pub memory: Option<String>,
+    #[serde(rename = "correctAnswer")]
+    pub correct_answer: Option<bool>,
+    #[serde(rename = "totalTestcases")]
+    pub total_testcases: Option<u32>,
+    #[serde(rename = "correctTestcases")]
+    pub correct_testcases: Option<u32>,
+    #[serde(rename = "compileError")]
+    pub compile_error: Option<String>,
+    #[serde(rename = "runtimeError")]
+    pub runtime_error: Option<String>,
+    #[serde(rename = "lastTestcase")]
+    pub last_testcase: Option<String>,
+    #[serde(rename = "expectedOutput")]
+    pub expected_output: Option<String>,
+    #[serde(rename = "codeOutput")]
+    pub code_output: Option<String>,
+}
+
+/// Generic GraphQL error structure
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphQLError {
+    pub message: String,
 }
 
 /// Response structure for problem list query
@@ -178,5 +242,38 @@ mod tests {
         let errors = response.errors.unwrap();
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].message, "Test error");
+    }
+
+    #[test]
+    fn test_test_result_display() {
+        let result = TestResult {
+            status: TestStatus::Success,
+            runtime: Some(16),
+            memory: Some(12.5),
+            passed_tests: 5,
+            total_tests: 5,
+            failed_test_case: None,
+            compile_error: None,
+        };
+
+        assert_eq!(result.status, TestStatus::Success);
+        assert_eq!(result.runtime, Some(16));
+        assert_eq!(result.passed_tests, 5);
+    }
+
+    #[test]
+    fn test_test_result_failure() {
+        let result = TestResult {
+            status: TestStatus::RuntimeError,
+            runtime: None,
+            memory: None,
+            passed_tests: 2,
+            total_tests: 5,
+            failed_test_case: Some("Input: [1,2,3]\nExpected: [1,3]\nActual: [1,2]".to_string()),
+            compile_error: None,
+        };
+
+        assert_eq!(result.status, TestStatus::RuntimeError);
+        assert!(result.failed_test_case.is_some());
     }
 }

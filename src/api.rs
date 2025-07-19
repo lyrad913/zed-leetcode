@@ -1,6 +1,7 @@
 use crate::models::{
     GraphQLResponse, Problem, ProblemDetail, ProblemFilters, 
-    ProblemSetQuestionListData, QuestionData, Difficulty
+    ProblemSetQuestionListData, QuestionData, Difficulty,
+    TestExecutionData, TestSubmissionResult, TestResult, TestStatus
 };
 use anyhow::{Context, Result};
 use std::process::Command;
@@ -103,6 +104,169 @@ impl LeetCodeApi {
         }
 
         Ok(false)
+    }
+
+    /// Execute test for a problem solution
+    pub fn run_test(&self, title_slug: &str, code: &str, lang: &str) -> Result<TestResult> {
+        if self.session_cookie.is_none() {
+            return Err(anyhow::anyhow!("Authentication required for testing"));
+        }
+
+        // Step 1: Submit code for testing
+        let submission_id = self.submit_for_test(title_slug, code, lang)?;
+
+        // Step 2: Poll for results
+        let result = self.poll_test_result(&submission_id)?;
+
+        Ok(result)
+    }
+
+    /// Submit code for testing and return submission ID
+    fn submit_for_test(&self, title_slug: &str, code: &str, lang: &str) -> Result<String> {
+        let query = format!(
+            r#"{{
+                "query": "mutation interpretSolution($titleSlug: String!, $code: String!, $lang: String!) {{
+                    interpretSolution(titleSlug: $titleSlug, code: $code, lang: $lang) {{
+                        submissionId
+                    }}
+                }}",
+                "variables": {{
+                    "titleSlug": "{}",
+                    "code": "{}",
+                    "lang": "{}"
+                }}
+            }}"#,
+            title_slug,
+            code.replace('"', "\\\"").replace('\n', "\\n"),
+            lang
+        );
+
+        let response = self.execute_graphql_query(&query)?;
+        let graphql_response: GraphQLResponse<TestExecutionData> = 
+            serde_json::from_str(&response)
+                .context("Failed to parse test submission response")?;
+
+        if let Some(errors) = graphql_response.errors {
+            return Err(anyhow::anyhow!("GraphQL errors: {:?}", errors));
+        }
+
+        let data = graphql_response.data
+            .context("No data in test submission response")?;
+
+        let interpret_solution = data.interpret_solution
+            .context("No interpretation result in response")?;
+
+        Ok(interpret_solution.submission_id)
+    }
+
+    /// Poll for test result by submission ID
+    fn poll_test_result(&self, submission_id: &str) -> Result<TestResult> {
+        let max_polls = 30; // Poll for up to 30 seconds
+        let poll_interval = std::time::Duration::from_secs(1);
+
+        for _ in 0..max_polls {
+            let query = format!(
+                r#"{{
+                    "query": "query checkInterpret($submissionId: String!) {{
+                        interpretSolution(submissionId: $submissionId) {{
+                            submissionId
+                            statusCode
+                            status
+                            runtime
+                            memory
+                            correctAnswer
+                            totalTestcases
+                            correctTestcases
+                            compileError
+                            runtimeError
+                            lastTestcase
+                            expectedOutput
+                            codeOutput
+                        }}
+                    }}",
+                    "variables": {{
+                        "submissionId": "{}"
+                    }}
+                }}"#,
+                submission_id
+            );
+
+            let response = self.execute_graphql_query(&query)?;
+            let graphql_response: GraphQLResponse<TestExecutionData> = 
+                serde_json::from_str(&response)
+                    .context("Failed to parse test result response")?;
+
+            if let Some(errors) = graphql_response.errors {
+                return Err(anyhow::anyhow!("GraphQL errors: {:?}", errors));
+            }
+
+            if let Some(data) = graphql_response.data {
+                if let Some(interpret_result) = data.interpret_solution {
+                    // Check if execution is complete
+                    if interpret_result.status_code == 10 { // SUCCESS
+                        return Ok(self.parse_test_result(interpret_result));
+                    } else if interpret_result.status_code > 10 { // ERROR or COMPLETE
+                        return Ok(self.parse_test_result(interpret_result));
+                    }
+                    // If status_code is < 10, continue polling (still running)
+                }
+            }
+
+            std::thread::sleep(poll_interval);
+        }
+
+        Err(anyhow::anyhow!("Test execution timed out"))
+    }
+
+    /// Parse API result into TestResult structure
+    fn parse_test_result(&self, result: TestSubmissionResult) -> TestResult {
+        let status = match result.status_code {
+            10 => TestStatus::Success,
+            11 => TestStatus::WrongAnswer,
+            12 => TestStatus::MemoryLimitExceeded,
+            13 => TestStatus::TimeLimitExceeded,
+            14 => TestStatus::RuntimeError,
+            15 => TestStatus::CompileError,
+            _ => TestStatus::UnknownError,
+        };
+
+        let runtime = result.runtime
+            .and_then(|r| r.parse::<u32>().ok());
+
+        let memory = result.memory
+            .and_then(|m| m.parse::<f64>().ok());
+
+        let failed_test_case = if status != TestStatus::Success {
+            let mut failure_info = Vec::new();
+            
+            if let Some(input) = result.last_testcase {
+                failure_info.push(format!("Input: {}", input));
+            }
+            if let Some(expected) = result.expected_output {
+                failure_info.push(format!("Expected: {}", expected));
+            }
+            if let Some(actual) = result.code_output {
+                failure_info.push(format!("Actual: {}", actual));
+            }
+            
+            if !failure_info.is_empty() {
+                Some(failure_info.join("\n"))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        TestResult {
+            status,
+            runtime,
+            memory,
+            passed_tests: result.correct_testcases.unwrap_or(0),
+            total_tests: result.total_testcases.unwrap_or(0),
+            failed_test_case,
+            compile_error: result.compile_error.or(result.runtime_error),
+        }
     }
 
     /// Execute GraphQL query using curl
@@ -333,6 +497,72 @@ mod tests {
         assert!(query.contains("codeSnippets"));
         assert!(query.contains("sampleTestCase"));
         assert!(query.contains(r#""titleSlug": "two-sum""#));
+    }
+
+    #[test]
+    fn test_parse_test_result_success() {
+        let api = LeetCodeApi::new();
+        let mock_result = TestSubmissionResult {
+            submission_id: "123".to_string(),
+            status_code: 10,
+            status: "Success".to_string(),
+            runtime: Some("16".to_string()),
+            memory: Some("12.5".to_string()),
+            correct_answer: Some(true),
+            total_testcases: Some(5),
+            correct_testcases: Some(5),
+            compile_error: None,
+            runtime_error: None,
+            last_testcase: None,
+            expected_output: None,
+            code_output: None,
+        };
+
+        let result = api.parse_test_result(mock_result);
+        assert_eq!(result.status, TestStatus::Success);
+        assert_eq!(result.runtime, Some(16));
+        assert_eq!(result.memory, Some(12.5));
+        assert_eq!(result.passed_tests, 5);
+        assert_eq!(result.total_tests, 5);
+    }
+
+    #[test]
+    fn test_parse_test_result_wrong_answer() {
+        let api = LeetCodeApi::new();
+        let mock_result = TestSubmissionResult {
+            submission_id: "123".to_string(),
+            status_code: 11,
+            status: "Wrong Answer".to_string(),
+            runtime: None,
+            memory: None,
+            correct_answer: Some(false),
+            total_testcases: Some(5),
+            correct_testcases: Some(2),
+            compile_error: None,
+            runtime_error: None,
+            last_testcase: Some("[1,2,3]".to_string()),
+            expected_output: Some("[1,3]".to_string()),
+            code_output: Some("[1,2]".to_string()),
+        };
+
+        let result = api.parse_test_result(mock_result);
+        assert_eq!(result.status, TestStatus::WrongAnswer);
+        assert_eq!(result.passed_tests, 2);
+        assert_eq!(result.total_tests, 5);
+        assert!(result.failed_test_case.is_some());
+        
+        let failure_info = result.failed_test_case.unwrap();
+        assert!(failure_info.contains("Input: [1,2,3]"));
+        assert!(failure_info.contains("Expected: [1,3]"));
+        assert!(failure_info.contains("Actual: [1,2]"));
+    }
+
+    #[test]
+    fn test_run_test_requires_auth() {
+        let api = LeetCodeApi::new(); // No session cookie
+        let result = api.run_test("two-sum", "test code", "python");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Authentication required"));
     }
 
     // Note: Integration tests for actual API calls would be in tests/integration_tests.rs

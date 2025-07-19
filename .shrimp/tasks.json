@@ -224,14 +224,14 @@
       "name": "테스트 실행 기능 구현",
       "description": "/leetcode-test 명령어를 구현하여 현재 열린 솔루션 파일을 LeetCode의 테스트 케이스로 검증할 수 있는 기능을 제공합니다.",
       "notes": "테스트 기능은 인증된 사용자만 사용할 수 있으므로, 사전에 로그인 상태를 확인해야 합니다.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "17814e1a-c6f6-46fa-a7bf-e9a8704e90db"
         }
       ],
       "createdAt": "2025-07-19T04:01:01.148Z",
-      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T07:01:59.332Z",
       "relatedFiles": [
         {
           "path": "src/commands.rs",
@@ -253,7 +253,9 @@
       ],
       "implementationGuide": "1. /leetcode-test 명령어 구현:\\n   ```rust\\n   fn handle_test(&self, args: Vec<String>, worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {\\n       let file_path = get_current_file_path(worktree)?;\\n       let problem_id = extract_problem_id_from_filename(&file_path)?;\\n       let code = read_file_content(&file_path)?;\\n       \\n       let test_result = self.api.run_test(problem_id, code)?;\\n       Ok(format_test_result(test_result))\\n   }\\n   ```\\n\\n2. 현재 파일 감지 로직:\\n   - Worktree API를 사용하여 현재 활성 파일 경로 획득\\n   - 파일명에서 문제 ID 추출 (예: \"1-two-sum.rs\" -> 1)\\n   - 지원되는 언어 확장자 검증\\n\\n3. 코드 실행 API 호출:\\n   - LeetCode의 interpret_solution API 사용\\n   - 언어별 적절한 실행 환경 설정\\n   - 테스트 케이스 결과 파싱\\n\\n4. 결과 포맷팅:\\n   - 통과/실패 상태 표시\\n   - 실행 시간 및 메모리 사용량\\n   - 실패한 테스트 케이스 상세 정보\\n   - 컴파일 에러 메시지 (있을 경우)",
       "verificationCriteria": "솔루션 파일을 열고 /leetcode-test 명령어를 실행했을 때, LeetCode의 테스트 케이스가 실행되고 결과가 적절히 표시되는지 확인",
-      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택.",
+      "summary": "테스트 실행 기능이 성공적으로 구현되었습니다. /leetcode-test 명령어는 인증 체크, 파일 경로 처리, 문제 정보 추출, LeetCode API와의 테스트 실행 통신, 결과 포맷팅 등 모든 핵심 기능을 포함합니다. API 모듈에 interpret_solution 및 결과 폴링 기능을 추가하고, 8개 언어 지원과 포괄적인 에러 처리를 구현했습니다. 59개 모든 테스트가 통과하여 견고한 구현을 확인했습니다.",
+      "completedAt": "2025-07-19T07:01:59.331Z"
     },
     {
       "id": "476437c5-a184-4513-8f49-688ffafb9f1f",

@@ -173,14 +173,50 @@ pub fn handle_show(args: Vec<String>) -> Result<SlashCommandOutput, String> {
 
 /// Handle /leetcode-test command
 /// Tests current solution file against LeetCode test cases
-pub fn handle_test(_args: Vec<String>, worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {
-    // TODO: Get current file from worktree
-    let _worktree = worktree.ok_or("No active workspace found")?;
+pub fn handle_test(args: Vec<String>, worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {
+    // Check if user is authenticated
+    if !is_user_authenticated() {
+        return Err("Please login first using /leetcode-login <session-cookie>".to_string());
+    }
+
+    // Parse optional file path from arguments
+    let file_path = if args.is_empty() {
+        // Get current file from worktree if available
+        get_current_file_path(worktree)?
+    } else {
+        // Use provided file path
+        args[0].clone()
+    };
+
+    // Extract problem information from filename
+    let (title_slug, lang) = extract_problem_info_from_path(&file_path)?;
+
+    // Read file content
+    let code = read_file_content(&file_path)?;
+
+    // Get authenticated API client
+    let config_dir = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?
+        .join(".leetcode");
     
-    Ok(SlashCommandOutput {
-        text: "Testing current solution file...".to_string(),
-        sections: vec![],
-    })
+    let auth_manager = AuthManager::new(&config_dir);
+    let session_opt = auth_manager.load_session()
+        .map_err(|e| format!("Failed to load session: {}", e))?;
+    
+    let session = session_opt.ok_or("No valid session found. Please login first.".to_string())?;
+    let api = LeetCodeApi::with_session(session);
+
+    // Run test
+    match api.run_test(&title_slug, &code, &lang) {
+        Ok(test_result) => {
+            let output = format_test_result(&test_result);
+            Ok(SlashCommandOutput {
+                text: output,
+                sections: vec![],
+            })
+        },
+        Err(e) => Err(format!("Test execution failed: {}", e)),
+    }
 }
 
 /// Handle /leetcode-submit command  
@@ -332,12 +368,12 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_test_no_worktree() {
+    fn test_handle_test_no_auth() {
         let args = vec![];
         let result = handle_test(args, None);
         
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("No active workspace found"));
+        assert!(result.unwrap_err().contains("Please login first"));
     }
 
     #[test]
@@ -578,4 +614,196 @@ fn simple_html_to_text(content: &str) -> String {
     // Clean up whitespace
     clean_result = clean_result.replace("\n\n\n", "\n\n");
     clean_result.trim().to_string()
+}
+
+/// Get current file path from worktree or error
+fn get_current_file_path(worktree: Option<&Worktree>) -> Result<String, String> {
+    let _worktree = worktree.ok_or("No active workspace found. Please open a solution file or provide file path as argument.")?;
+    
+    // Since we can't access the active editor file directly from Zed Extension API,
+    // we need to get it from arguments or detect from workspace
+    Err("Please provide the solution file path as an argument: /leetcode-test <file-path>".to_string())
+}
+
+/// Extract problem title slug and language from file path
+fn extract_problem_info_from_path(file_path: &str) -> Result<(String, String), String> {
+    let path = std::path::Path::new(file_path);
+    
+    // Extract extension for language detection
+    let extension = path.extension()
+        .and_then(|ext| ext.to_str())
+        .ok_or("Could not determine file extension")?;
+
+    let lang = match extension {
+        "rs" => "rust",
+        "py" => "python3",
+        "js" => "javascript",
+        "ts" => "typescript",
+        "java" => "java",
+        "cpp" | "cc" => "cpp",
+        "c" => "c",
+        "go" => "golang",
+        _ => return Err(format!("Unsupported language extension: {}", extension)),
+    };
+
+    // Extract title slug from filename pattern: ID-title-slug.ext
+    let filename = path.file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or("Invalid filename")?;
+
+    // Pattern: number-title-slug or just title-slug
+    let title_slug = if let Some(dash_pos) = filename.find('-') {
+        // Check if it starts with number
+        let prefix = &filename[..dash_pos];
+        if prefix.parse::<u32>().is_ok() {
+            // Skip the number part: "1-two-sum" -> "two-sum"  
+            filename[dash_pos + 1..].to_string()
+        } else {
+            filename.to_string()
+        }
+    } else {
+        filename.to_string()
+    };
+
+    Ok((title_slug, lang.to_string()))
+}
+
+/// Read file content from filesystem
+fn read_file_content(file_path: &str) -> Result<String, String> {
+    std::fs::read_to_string(file_path)
+        .map_err(|e| format!("Failed to read file {}: {}", file_path, e))
+}
+
+/// Format test result for display
+fn format_test_result(result: &crate::models::TestResult) -> String {
+    let mut output = String::new();
+    
+    // Status header
+    output.push_str("# 🧪 Test Results\n\n");
+    output.push_str(&format!("**Status:** {}\n", result.status));
+    
+    // Test statistics
+    output.push_str(&format!("**Tests Passed:** {}/{}\n", result.passed_tests, result.total_tests));
+    
+    // Performance metrics
+    if let Some(runtime) = result.runtime {
+        output.push_str(&format!("**Runtime:** {}ms\n", runtime));
+    }
+    
+    if let Some(memory) = result.memory {
+        output.push_str(&format!("**Memory:** {:.1} MB\n", memory));
+    }
+    
+    // Error details
+    if let Some(ref compile_error) = result.compile_error {
+        output.push_str("\n## Compile Error\n\n");
+        output.push_str("```\n");
+        output.push_str(compile_error);
+        output.push_str("\n```\n");
+    }
+    
+    if let Some(ref failed_case) = result.failed_test_case {
+        output.push_str("\n## Failed Test Case\n\n");
+        output.push_str("```\n");
+        output.push_str(failed_case);
+        output.push_str("\n```\n");
+    }
+    
+    // Success message
+    if result.status == crate::models::TestStatus::Success {
+        output.push_str("\n🎉 **Great job! All tests passed!**\n");
+        output.push_str("\nYou can now submit your solution using `/leetcode-submit`\n");
+    }
+    
+    output
+}
+
+#[cfg(test)]
+mod test_functionality_tests {
+    use super::*;
+    use crate::models::{TestResult, TestStatus};
+
+    #[test]
+    fn test_extract_problem_info_from_path() {
+        // Test with numbered filename
+        let (slug, lang) = extract_problem_info_from_path("1-two-sum.rs").unwrap();
+        assert_eq!(slug, "two-sum");
+        assert_eq!(lang, "rust");
+
+        // Test with title only filename
+        let (slug2, lang2) = extract_problem_info_from_path("two-sum.py").unwrap();
+        assert_eq!(slug2, "two-sum");
+        assert_eq!(lang2, "python3");
+
+        // Test different languages
+        let (_, lang3) = extract_problem_info_from_path("test.java").unwrap();
+        assert_eq!(lang3, "java");
+
+        let (_, lang4) = extract_problem_info_from_path("test.cpp").unwrap();
+        assert_eq!(lang4, "cpp");
+    }
+
+    #[test]
+    fn test_extract_problem_info_unsupported_extension() {
+        let result = extract_problem_info_from_path("test.xyz");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unsupported language extension"));
+    }
+
+    #[test]
+    fn test_format_test_result_success() {
+        let result = TestResult {
+            status: TestStatus::Success,
+            runtime: Some(16),
+            memory: Some(12.5),
+            passed_tests: 5,
+            total_tests: 5,
+            failed_test_case: None,
+            compile_error: None,
+        };
+
+        let output = format_test_result(&result);
+        assert!(output.contains("✅ All tests passed"));
+        assert!(output.contains("**Tests Passed:** 5/5"));
+        assert!(output.contains("**Runtime:** 16ms"));
+        assert!(output.contains("**Memory:** 12.5 MB"));
+        assert!(output.contains("Great job! All tests passed!"));
+    }
+
+    #[test]
+    fn test_format_test_result_failure() {
+        let result = TestResult {
+            status: TestStatus::WrongAnswer,
+            runtime: None,
+            memory: None,
+            passed_tests: 2,
+            total_tests: 5,
+            failed_test_case: Some("Input: [1,2,3]\nExpected: [1,3]\nActual: [1,2]".to_string()),
+            compile_error: None,
+        };
+
+        let output = format_test_result(&result);
+        assert!(output.contains("❌ Wrong Answer"));
+        assert!(output.contains("**Tests Passed:** 2/5"));
+        assert!(output.contains("Failed Test Case"));
+        assert!(output.contains("Input: [1,2,3]"));
+    }
+
+    #[test]
+    fn test_format_test_result_compile_error() {
+        let result = TestResult {
+            status: TestStatus::CompileError,
+            runtime: None,
+            memory: None,
+            passed_tests: 0,
+            total_tests: 0,
+            failed_test_case: None,
+            compile_error: Some("SyntaxError: invalid syntax".to_string()),
+        };
+
+        let output = format_test_result(&result);
+        assert!(output.contains("❌ Compile Error"));
+        assert!(output.contains("Compile Error"));
+        assert!(output.contains("SyntaxError: invalid syntax"));
+    }
 }
