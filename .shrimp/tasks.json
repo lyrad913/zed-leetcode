@@ -1,0 +1,321 @@
+{
+  "tasks": [
+    {
+      "id": "56077f7f-56e6-47ea-bec9-7f942ef0ff93",
+      "name": "Zed Extension 기본 구조 설정",
+      "description": "Zed Extension의 기본 구조를 설정하고 필요한 설정 파일들을 생성합니다. extension.toml과 Cargo.toml을 Zed Extension 표준에 맞게 구성하고, 기본 Extension trait 구현체를 생성합니다.",
+      "notes": "Zed Extension은 cdylib 형태로 컴파일되므로 main.rs가 아닌 lib.rs를 사용해야 합니다.",
+      "status": "completed",
+      "dependencies": [],
+      "createdAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T04:04:42.524Z",
+      "relatedFiles": [
+        {
+          "path": "extension.toml",
+          "type": "CREATE",
+          "description": "Zed Extension 메타데이터 및 슬래시 커맨드 정의"
+        },
+        {
+          "path": "Cargo.toml",
+          "type": "TO_MODIFY",
+          "description": "기존 Cargo.toml을 Extension용으로 변경",
+          "lineStart": 1,
+          "lineEnd": 10
+        },
+        {
+          "path": "src/lib.rs",
+          "type": "CREATE",
+          "description": "Extension의 메인 진입점"
+        },
+        {
+          "path": "src/main.rs",
+          "type": "TO_MODIFY",
+          "description": "더 이상 필요하지 않으므로 제거"
+        }
+      ],
+      "implementationGuide": "1. extension.toml 생성:\\n   - id, name, version 등 기본 메타데이터 설정\\n   - slash_commands 섹션에 leetcode 관련 명령어들 등록\\n   - description과 requires_argument 속성 설정\\n\\n2. Cargo.toml 수정:\\n   - crate-type을 [\"cdylib\"]로 설정\\n   - zed_extension_api dependency 추가\\n   - 필요한 추가 dependency들 (serde_json, anyhow 등) 추가\\n\\n3. src/lib.rs 생성:\\n   ```rust\\n   use zed_extension_api as zed;\\n   \\n   struct LeetCodeExtension;\\n   \\n   impl zed::Extension for LeetCodeExtension {\\n       fn new() -> Self {\\n           LeetCodeExtension\\n       }\\n   }\\n   \\n   zed::register_extension!(LeetCodeExtension);\\n   ```\\n\\n4. 기본 디렉토리 구조 생성 및 main.rs 제거",
+      "verificationCriteria": "extension.toml과 Cargo.toml이 올바르게 설정되고, zed extension을 dev extension으로 설치할 수 있으며, 기본 Extension이 로드되는 것을 확인",
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택.",
+      "summary": "Zed Extension 기본 구조가 성공적으로 설정되었습니다. extension.toml에 5개의 슬래시 커맨드 정의, Cargo.toml을 cdylib로 구성하고 필요한 의존성 추가, src/lib.rs에 Extension trait 구현과 기본 명령어 라우팅 로직 완성. 프로젝트가 경고 없이 성공적으로 컴파일됩니다.",
+      "completedAt": "2025-07-19T04:04:42.521Z"
+    },
+    {
+      "id": "3965a638-90ca-492c-b4a6-4d31784cc32d",
+      "name": "슬래시 커맨드 기본 구조 구현",
+      "description": "LeetCode Extension의 핵심 슬래시 커맨드들의 기본 구조를 구현합니다. /leetcode-login, /leetcode-list, /leetcode-show, /leetcode-test, /leetcode-submit 명령어의 기본 스켈레톤을 만들고 argument parsing 로직을 구현합니다.",
+      "notes": "이 단계에서는 실제 LeetCode API 호출 없이 기본 구조만 구현하고, 각 명령어가 올바르게 라우팅되는지 확인합니다.",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "56077f7f-56e6-47ea-bec9-7f942ef0ff93"
+        }
+      ],
+      "createdAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T05:23:23.452Z",
+      "relatedFiles": [
+        {
+          "path": "src/lib.rs",
+          "type": "TO_MODIFY",
+          "description": "Extension trait 구현 확장",
+          "lineStart": 1,
+          "lineEnd": 20
+        },
+        {
+          "path": "src/commands.rs",
+          "type": "CREATE",
+          "description": "슬래시 커맨드 핸들러들"
+        }
+      ],
+      "implementationGuide": "1. Extension trait의 run_slash_command 메서드 구현:\\n   ```rust\\n   fn run_slash_command(\\n       &self,\\n       command: SlashCommand,\\n       args: Vec<String>,\\n       worktree: Option<&Worktree>\\n   ) -> Result<SlashCommandOutput, String> {\\n       match command.name.as_str() {\\n           \"leetcode-login\" => self.handle_login(args),\\n           \"leetcode-list\" => self.handle_list(args),\\n           \"leetcode-show\" => self.handle_show(args),\\n           \"leetcode-test\" => self.handle_test(args, worktree),\\n           \"leetcode-submit\" => self.handle_submit(args, worktree),\\n           _ => Err(format!(\"Unknown command: {}\", command.name))\\n       }\\n   }\\n   ```\\n\\n2. 각 명령어별 핸들러 함수 구현 (기본 구조만):\\n   - handle_login: 인증 처리\\n   - handle_list: 문제 목록 조회\\n   - handle_show: 문제 상세 조회 및 파일 생성\\n   - handle_test: 현재 파일 테스트\\n   - handle_submit: 현재 파일 제출\\n\\n3. 공통 유틸리티 함수:\\n   - parse_arguments: 명령어 인자 파싱\\n   - create_output: SlashCommandOutput 생성 헬퍼",
+      "verificationCriteria": "모든 슬래시 커맨드가 Zed Assistant에서 인식되고, 기본 응답을 반환하는지 확인. 잘못된 명령어에 대해 적절한 에러 메시지가 표시되는지 검증",
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택.",
+      "summary": "슬래시 커맨드 기본 구조가 TDD 방식으로 성공적으로 구현되었습니다. 5개 핵심 명령어(/leetcode-login, /leetcode-list, /leetcode-show, /leetcode-test, /leetcode-submit)의 핸들러 함수와 인자 파싱 유틸리티 구현 완료. 10개 단위 테스트 모두 통과하며, 적절한 에러 처리와 사용자 친화적 메시지 제공. Extension trait에서 명령어 라우팅 로직 완성.",
+      "completedAt": "2025-07-19T05:23:23.451Z"
+    },
+    {
+      "id": "a9c872ed-8a61-4bf4-8362-f945c3c8c5e8",
+      "name": "외부 LeetCode API 통신 모듈 개발",
+      "description": "Zed Extension API의 HTTP 제약을 우회하기 위해 시스템 명령어(curl) 또는 외부 CLI 도구를 활용한 LeetCode API 통신 모듈을 구현합니다. GraphQL 기반의 LeetCode API와 통신하여 문제 목록, 상세 정보를 가져오는 기능을 구현합니다.",
+      "notes": "LeetCode API는 인증 없이도 기본적인 문제 정보에 접근 가능하지만, 제출 등은 인증이 필요합니다. 초기에는 공개 정보부터 구현합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "3965a638-90ca-492c-b4a6-4d31784cc32d"
+        }
+      ],
+      "createdAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "relatedFiles": [
+        {
+          "path": "src/api.rs",
+          "type": "CREATE",
+          "description": "LeetCode API 통신 모듈"
+        },
+        {
+          "path": "src/models.rs",
+          "type": "CREATE",
+          "description": "API 응답을 위한 데이터 모델들"
+        },
+        {
+          "path": "Cargo.toml",
+          "type": "TO_MODIFY",
+          "description": "serde, serde_json dependency 추가",
+          "lineStart": 6,
+          "lineEnd": 10
+        }
+      ],
+      "implementationGuide": "1. API 클라이언트 모듈 생성:\\n   ```rust\\n   pub struct LeetCodeApi;\\n   \\n   impl LeetCodeApi {\\n       pub fn new() -> Self { ... }\\n       \\n       pub async fn fetch_problems(&self, filters: ProblemFilters) -> Result<Vec<Problem>> {\\n           let query = self.build_graphql_query(filters);\\n           let response = self.execute_curl_command(&query)?;\\n           self.parse_problems_response(response)\\n       }\\n   }\\n   ```\\n\\n2. curl 명령어 실행 로직:\\n   - std::process::Command를 사용하여 curl 호출\\n   - GraphQL 쿼리 구성 및 헤더 설정\\n   - 응답 JSON 파싱\\n\\n3. LeetCode API 엔드포인트 정의:\\n   - https://leetcode.com/graphql/ (메인 API)\\n   - 문제 목록 쿼리 (problemsetQuestionList)\\n   - 문제 상세 쿼리 (questionData)\\n\\n4. 데이터 구조 정의:\\n   - Problem, Difficulty, Tag 등의 구조체\\n   - API 응답 파싱을 위한 Deserialize 구현",
+      "verificationCriteria": "curl을 통해 LeetCode API에서 문제 목록을 성공적으로 가져오고, JSON 응답을 올바른 Rust 구조체로 파싱할 수 있는지 확인",
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+    },
+    {
+      "id": "fdd064fc-3467-4535-9083-18ec28d02b11",
+      "name": "파일 시스템 기반 문제 관리 구현",
+      "description": "LeetCode 문제를 파일 시스템에 저장하고 관리하는 기능을 구현합니다. 문제 메타데이터 캐싱, 코드 템플릿 생성, 사용자 솔루션 파일 관리 등을 포함합니다.",
+      "notes": "파일 시스템 작업은 비동기적으로 처리하고, 사용자의 워크스페이스를 오염시키지 않도록 .leetcode 디렉토리를 사용합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "a9c872ed-8a61-4bf4-8362-f945c3c8c5e8"
+        }
+      ],
+      "createdAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "relatedFiles": [
+        {
+          "path": "src/file_manager.rs",
+          "type": "CREATE",
+          "description": "파일 시스템 기반 데이터 관리"
+        },
+        {
+          "path": "src/templates.rs",
+          "type": "CREATE",
+          "description": "언어별 코드 템플릿"
+        },
+        {
+          "path": "src/commands.rs",
+          "type": "TO_MODIFY",
+          "description": "파일 관리 기능 통합",
+          "lineStart": 1,
+          "lineEnd": 50
+        }
+      ],
+      "implementationGuide": "1. 파일 시스템 구조 설계:\\n   ```\\n   .leetcode/\\n   ├── config.json          # 사용자 설정 및 인증 정보\\n   ├── problems/           # 문제 메타데이터 캐시\\n   │   ├── 1.json\\n   │   └── 2.json\\n   └── solutions/          # 사용자 솔루션 파일들\\n       ├── 1-two-sum.rs\\n       └── 2-add-two-numbers.py\\n   ```\\n\\n2. 파일 관리자 구현:\\n   ```rust\\n   pub struct FileManager {\\n       workspace_root: PathBuf\\n   }\\n   \\n   impl FileManager {\\n       pub fn save_problem(&self, problem: &Problem) -> Result<()> { ... }\\n       pub fn load_problem(&self, id: u32) -> Result<Option<Problem>> { ... }\\n       pub fn create_solution_file(&self, problem: &Problem, language: &str) -> Result<PathBuf> { ... }\\n   }\\n   ```\\n\\n3. 코드 템플릿 생성기:\\n   - 각 언어별 기본 템플릿\\n   - 문제 설명을 주석으로 포함\\n   - 함수 시그니처 자동 생성\\n\\n4. Worktree API 활용:\\n   - Zed의 Worktree를 사용하여 현재 워크스페이스 정보 접근\\n   - 파일 생성 및 읽기 작업",
+      "verificationCriteria": "문제 정보를 JSON으로 저장하고 불러올 수 있으며, 다양한 언어의 코드 템플릿을 생성하여 적절한 위치에 파일로 생성할 수 있는지 확인",
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+    },
+    {
+      "id": "6ef768d9-3e94-43a2-8849-eb5da88b2a1b",
+      "name": "로그인 및 인증 시스템 구현",
+      "description": "/leetcode-login 명령어를 통한 사용자 인증 시스템을 구현합니다. LeetCode 세션 쿠키를 사용한 인증 방식을 지원하고, 인증 상태를 로컬에 안전하게 저장합니다.",
+      "notes": "LeetCode는 복잡한 OAuth가 아닌 세션 쿠키 방식을 사용하므로, 사용자가 브라우저에서 쿠키를 직접 복사하는 방식을 안내해야 합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "fdd064fc-3467-4535-9083-18ec28d02b11"
+        }
+      ],
+      "createdAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "relatedFiles": [
+        {
+          "path": "src/auth.rs",
+          "type": "CREATE",
+          "description": "사용자 인증 및 세션 관리"
+        },
+        {
+          "path": "src/commands.rs",
+          "type": "TO_MODIFY",
+          "description": "login 명령어 핸들러 구현",
+          "lineStart": 20,
+          "lineEnd": 40
+        }
+      ],
+      "implementationGuide": "1. 인증 관리자 구현:\\n   ```rust\\n   pub struct AuthManager {\\n       config_path: PathBuf\\n   }\\n   \\n   impl AuthManager {\\n       pub fn save_session(&self, session_cookie: &str) -> Result<()> { ... }\\n       pub fn load_session(&self) -> Result<Option<String>> { ... }\\n       pub fn verify_session(&self) -> Result<bool> { ... }\\n   }\\n   ```\\n\\n2. /leetcode-login 명령어 구현:\\n   - 사용자로부터 세션 쿠키 입력 받기\\n   - 쿠키 유효성 검증 (API 호출)\\n   - 성공시 암호화하여 로컬 저장\\n\\n3. 세션 검증 로직:\\n   - curl을 사용하여 인증이 필요한 API 엔드포인트 호출\\n   - 응답 상태 코드로 인증 상태 확인\\n\\n4. 보안 고려사항:\\n   - 민감한 정보는 base64 인코딩 또는 간단한 암호화\\n   - 파일 권한 설정 (600)\\n   - 세션 만료 처리",
+      "verificationCriteria": "사용자가 유효한 세션 쿠키를 입력했을 때 인증이 성공하고, 이후 다른 명령어에서 인증 상태를 확인할 수 있는지 검증",
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+    },
+    {
+      "id": "17814e1a-c6f6-46fa-a7bf-e9a8704e90db",
+      "name": "문제 목록 및 상세 조회 기능 구현",
+      "description": "/leetcode-list와 /leetcode-show 명령어를 완전히 구현합니다. 난이도, 태그, 회사별 필터링 기능과 문제 상세 정보 조회 및 코드 템플릿 파일 생성 기능을 포함합니다.",
+      "notes": "문제 목록은 페이지네이션을 고려하여 기본적으로 50개씩 표시하고, 추가 로딩은 별도 옵션으로 제공합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "6ef768d9-3e94-43a2-8849-eb5da88b2a1b"
+        }
+      ],
+      "createdAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "relatedFiles": [
+        {
+          "path": "src/commands.rs",
+          "type": "TO_MODIFY",
+          "description": "list, show 명령어 완전 구현",
+          "lineStart": 40,
+          "lineEnd": 100
+        },
+        {
+          "path": "src/filters.rs",
+          "type": "CREATE",
+          "description": "필터링 및 검색 로직"
+        },
+        {
+          "path": "src/formatter.rs",
+          "type": "CREATE",
+          "description": "출력 포맷팅 유틸리티"
+        }
+      ],
+      "implementationGuide": "1. /leetcode-list 명령어 구현:\\n   ```rust\\n   fn handle_list(&self, args: Vec<String>) -> Result<SlashCommandOutput, String> {\\n       let filters = parse_list_filters(args);\\n       let problems = self.api.fetch_problems(filters)?;\\n       let output = format_problems_list(problems);\\n       Ok(SlashCommandOutput { text: output, sections: vec![] })\\n   }\\n   ```\\n\\n2. 필터링 옵션 파싱:\\n   - --difficulty easy|medium|hard\\n   - --tag array,string,dp\\n   - --company google,facebook\\n   - --status todo|solved\\n\\n3. /leetcode-show 명령어 구현:\\n   - 문제 ID 또는 제목으로 검색\\n   - 문제 상세 정보 표시 (설명, 예제, 제약조건)\\n   - 선택한 언어로 코드 템플릿 파일 생성\\n   - 파일 경로를 출력에 포함\\n\\n4. 출력 포맷팅:\\n   - 문제 목록을 테이블 형태로 표시\\n   - 난이도별 색상 구분 (markdown)\\n   - 문제 상세는 markdown 형식으로 구조화",
+      "verificationCriteria": "/leetcode-list로 필터링된 문제 목록을 조회할 수 있고, /leetcode-show로 특정 문제의 상세 정보를 확인하며 해당 언어의 템플릿 파일이 생성되는지 확인",
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+    },
+    {
+      "id": "dd40313e-4f33-420b-affb-c8361fb6c2f2",
+      "name": "테스트 실행 기능 구현",
+      "description": "/leetcode-test 명령어를 구현하여 현재 열린 솔루션 파일을 LeetCode의 테스트 케이스로 검증할 수 있는 기능을 제공합니다.",
+      "notes": "테스트 기능은 인증된 사용자만 사용할 수 있으므로, 사전에 로그인 상태를 확인해야 합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "17814e1a-c6f6-46fa-a7bf-e9a8704e90db"
+        }
+      ],
+      "createdAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "relatedFiles": [
+        {
+          "path": "src/commands.rs",
+          "type": "TO_MODIFY",
+          "description": "test 명령어 구현",
+          "lineStart": 100,
+          "lineEnd": 130
+        },
+        {
+          "path": "src/test_runner.rs",
+          "type": "CREATE",
+          "description": "테스트 실행 및 결과 처리"
+        },
+        {
+          "path": "src/language_support.rs",
+          "type": "CREATE",
+          "description": "언어별 코드 처리 유틸리티"
+        }
+      ],
+      "implementationGuide": "1. /leetcode-test 명령어 구현:\\n   ```rust\\n   fn handle_test(&self, args: Vec<String>, worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {\\n       let file_path = get_current_file_path(worktree)?;\\n       let problem_id = extract_problem_id_from_filename(&file_path)?;\\n       let code = read_file_content(&file_path)?;\\n       \\n       let test_result = self.api.run_test(problem_id, code)?;\\n       Ok(format_test_result(test_result))\\n   }\\n   ```\\n\\n2. 현재 파일 감지 로직:\\n   - Worktree API를 사용하여 현재 활성 파일 경로 획득\\n   - 파일명에서 문제 ID 추출 (예: \"1-two-sum.rs\" -> 1)\\n   - 지원되는 언어 확장자 검증\\n\\n3. 코드 실행 API 호출:\\n   - LeetCode의 interpret_solution API 사용\\n   - 언어별 적절한 실행 환경 설정\\n   - 테스트 케이스 결과 파싱\\n\\n4. 결과 포맷팅:\\n   - 통과/실패 상태 표시\\n   - 실행 시간 및 메모리 사용량\\n   - 실패한 테스트 케이스 상세 정보\\n   - 컴파일 에러 메시지 (있을 경우)",
+      "verificationCriteria": "솔루션 파일을 열고 /leetcode-test 명령어를 실행했을 때, LeetCode의 테스트 케이스가 실행되고 결과가 적절히 표시되는지 확인",
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+    },
+    {
+      "id": "476437c5-a184-4513-8f49-688ffafb9f1f",
+      "name": "솔루션 제출 기능 구현",
+      "description": "/leetcode-submit 명령어를 구현하여 완성된 솔루션을 LeetCode에 제출하고 결과를 확인할 수 있는 기능을 제공합니다.",
+      "notes": "제출 기능은 신중하게 사용해야 하므로, 확인 프롬프트나 최종 검토 단계를 포함하는 것을 고려할 수 있습니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "dd40313e-4f33-420b-affb-c8361fb6c2f2"
+        }
+      ],
+      "createdAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "relatedFiles": [
+        {
+          "path": "src/commands.rs",
+          "type": "TO_MODIFY",
+          "description": "submit 명령어 구현",
+          "lineStart": 130,
+          "lineEnd": 160
+        },
+        {
+          "path": "src/submission.rs",
+          "type": "CREATE",
+          "description": "제출 처리 및 결과 모니터링"
+        }
+      ],
+      "implementationGuide": "1. /leetcode-submit 명령어 구현:\\n   ```rust\\n   fn handle_submit(&self, args: Vec<String>, worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {\\n       let file_path = get_current_file_path(worktree)?;\\n       let problem_id = extract_problem_id_from_filename(&file_path)?;\\n       let code = read_file_content(&file_path)?;\\n       \\n       let submission_id = self.api.submit_solution(problem_id, code)?;\\n       let result = self.api.check_submission_result(submission_id)?;\\n       Ok(format_submission_result(result))\\n   }\\n   ```\\n\\n2. 솔루션 제출 API 호출:\\n   - LeetCode의 submit API 사용\\n   - 제출 ID 반환 및 추적\\n   - 비동기 결과 대기 로직\\n\\n3. 제출 결과 모니터링:\\n   - 제출 상태 주기적 확인 (Pending -> Accepted/Wrong Answer 등)\\n   - 타임아웃 처리 (최대 30초)\\n   - 네트워크 오류 재시도 로직\\n\\n4. 결과 분석 및 표시:\\n   - Accepted: 통과율, 실행 시간, 메모리 사용량\\n   - Wrong Answer: 실패한 테스트 케이스 정보\\n   - Time Limit Exceeded: 시간 복잡도 힌트\\n   - Runtime Error: 오류 메시지 및 스택 트레이스",
+      "verificationCriteria": "솔루션 파일에서 /leetcode-submit을 실행했을 때 LeetCode에 정상적으로 제출되고, 결과(Accepted, Wrong Answer 등)가 올바르게 표시되는지 확인",
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+    },
+    {
+      "id": "d90201f0-59b4-4708-ad8e-853cd3268d3d",
+      "name": "문서화 및 사용자 가이드 작성",
+      "description": "Extension 사용법, 설치 방법, 문제 해결 가이드 등을 포함한 종합적인 문서를 작성합니다. README.md와 사용자 매뉴얼을 완성합니다.",
+      "notes": "문서는 Zed Extension 생태계의 표준을 따라 작성하고, VS Code 사용자들이 쉽게 전환할 수 있도록 비교 설명을 포함합니다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "476437c5-a184-4513-8f49-688ffafb9f1f"
+        }
+      ],
+      "createdAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "relatedFiles": [
+        {
+          "path": "README.md",
+          "type": "CREATE",
+          "description": "프로젝트 메인 문서"
+        },
+        {
+          "path": "docs/",
+          "type": "CREATE",
+          "description": "상세 문서 디렉토리"
+        },
+        {
+          "path": "docs/user-guide.md",
+          "type": "CREATE",
+          "description": "사용자 가이드"
+        },
+        {
+          "path": "docs/troubleshooting.md",
+          "type": "CREATE",
+          "description": "문제 해결 가이드"
+        }
+      ],
+      "implementationGuide": "1. README.md 작성:\\n   - 프로젝트 개요 및 주요 기능\\n   - 설치 방법 (Dev Extension)\\n   - 기본 사용법 및 명령어 설명\\n   - 스크린샷 및 데모 GIF\\n\\n2. 사용자 가이드:\\n   - 초기 설정 (로그인 방법)\\n   - 각 슬래시 커맨드 상세 사용법\\n   - 지원되는 프로그래밍 언어\\n   - 파일 구조 설명\\n\\n3. 개발자 문서:\\n   - 아키텍처 개요\\n   - API 구조 설명\\n   - 기여 방법\\n   - 빌드 및 테스트 방법\\n\\n4. 문제 해결 가이드:\\n   - 자주 발생하는 오류 및 해결법\\n   - 네트워크 문제 해결\\n   - 인증 관련 문제\\n   - 로그 확인 방법",
+      "verificationCriteria": "문서가 완전하고 정확하며, 새로운 사용자가 문서만으로 Extension을 설치하고 사용할 수 있는지 확인",
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+    }
+  ]
+}

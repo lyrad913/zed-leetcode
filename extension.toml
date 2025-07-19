@@ -1,0 +1,27 @@
+id = "zed-leetcode"
+name = "LeetCode"
+description = "LeetCode problem solving extension for Zed Editor"
+version = "0.1.0"
+schema_version = 1
+authors = ["Junhee Jang <junheejang@example.com>"]
+repository = "https://github.com/junheejang/zed-leetcode"
+
+[slash_commands.leetcode-login]
+description = "Login to LeetCode account using session cookie"
+requires_argument = true
+
+[slash_commands.leetcode-list]
+description = "List LeetCode problems with filtering options"
+requires_argument = false
+
+[slash_commands.leetcode-show]
+description = "Show problem details and create solution template"
+requires_argument = true
+
+[slash_commands.leetcode-test]
+description = "Test current solution file against LeetCode test cases"
+requires_argument = false
+
+[slash_commands.leetcode-submit]
+description = "Submit current solution to LeetCode"
+requires_argument = false
