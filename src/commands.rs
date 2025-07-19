@@ -1,4 +1,5 @@
 use zed_extension_api::{SlashCommandOutput, Worktree};
+use crate::templates::TemplateGenerator;
 
 /// Handle /leetcode-login command
 /// Authenticates user with LeetCode session cookie
@@ -7,9 +8,10 @@ pub fn handle_login(args: Vec<String>) -> Result<SlashCommandOutput, String> {
         return Err("Session cookie is required. Usage: /leetcode-login <session-cookie>".to_string());
     }
     
-    // TODO: Implement actual authentication logic
+    // TODO: Implement actual authentication logic with FileManager
+    // For now, just return success message
     Ok(SlashCommandOutput {
-        text: format!("Login attempt with session cookie: {}", args[0]),
+        text: format!("Login attempt with session cookie (length: {}). Authentication integration pending.", args[0].len()),
         sections: vec![],
     })
 }
@@ -34,14 +36,31 @@ pub fn handle_list(args: Vec<String>) -> Result<SlashCommandOutput, String> {
 /// Shows problem details and creates solution template
 pub fn handle_show(args: Vec<String>) -> Result<SlashCommandOutput, String> {
     if args.is_empty() {
-        return Err("Problem ID or title is required. Usage: /leetcode-show <problem-id>".to_string());
+        return Err("Problem ID or title is required. Usage: /leetcode-show <problem-id> [--language <lang>]".to_string());
     }
     
     let problem_identifier = &args[0];
     
-    // TODO: Implement problem fetching and template creation
+    // Parse language option
+    let parsed_args = parse_arguments(&args[1..]);
+    let language = parsed_args.iter()
+        .find(|(key, _)| key == "language")
+        .and_then(|(_, value)| value.as_ref())
+        .unwrap_or(&"rust".to_string())
+        .clone();
+
+    // Check if language is supported
+    if !TemplateGenerator::get_supported_languages().contains(&language.as_str()) {
+        return Err(format!(
+            "Unsupported language: {}. Supported languages: {}", 
+            language,
+            TemplateGenerator::get_supported_languages().join(", ")
+        ));
+    }
+    
+    // TODO: Implement problem fetching and template creation with API and FileManager
     Ok(SlashCommandOutput {
-        text: format!("Showing problem details for: {}", problem_identifier),
+        text: format!("Showing problem details for: {} (language: {}). Implementation with API integration pending.", problem_identifier, language),
         sections: vec![],
     })
 }
@@ -106,7 +125,8 @@ mod tests {
         
         assert!(result.is_ok());
         let output = result.unwrap();
-        assert!(output.text.contains("session_cookie_123"));
+        assert!(output.text.contains("length: 18")); // session_cookie_123 has length 18
+        assert!(output.text.contains("Authentication integration pending"));
     }
 
     #[test]
@@ -146,6 +166,8 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
         assert!(output.text.contains("Showing problem details for: 1"));
+        assert!(output.text.contains("language: rust")); // default language
+        assert!(output.text.contains("Implementation with API integration pending"));
     }
 
     #[test]
@@ -154,7 +176,30 @@ mod tests {
         let result = handle_show(args);
         
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Problem ID or title is required"));
+        let error = result.unwrap_err();
+        assert!(error.contains("Problem ID or title is required"));
+        assert!(error.contains("--language"));
+    }
+
+    #[test]
+    fn test_handle_show_with_language() {
+        let args = vec!["1".to_string(), "--language".to_string(), "python".to_string()];
+        let result = handle_show(args);
+        
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.text.contains("language: python"));
+    }
+
+    #[test]
+    fn test_handle_show_unsupported_language() {
+        let args = vec!["1".to_string(), "--language".to_string(), "cobol".to_string()];
+        let result = handle_show(args);
+        
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("Unsupported language: cobol"));
+        assert!(error.contains("Supported languages:"));
     }
 
     #[test]
