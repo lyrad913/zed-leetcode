@@ -1,7 +1,9 @@
 use crate::models::{
     GraphQLResponse, Problem, ProblemDetail, ProblemFilters, 
     ProblemSetQuestionListData, QuestionData, Difficulty,
-    TestExecutionData, TestSubmissionResult, TestResult, TestStatus
+    TestExecutionData, TestSubmissionResult, TestResult, TestStatus,
+    SubmissionData, SubmissionCheckData, SubmissionDetails,
+    SubmissionResult, SubmissionStatus
 };
 use anyhow::{Context, Result};
 use std::process::Command;
@@ -266,6 +268,173 @@ impl LeetCodeApi {
             total_tests: result.total_testcases.unwrap_or(0),
             failed_test_case,
             compile_error: result.compile_error.or(result.runtime_error),
+        }
+    }
+
+    /// Submit solution to LeetCode
+    pub fn submit_solution(&self, title_slug: &str, code: &str, lang: &str) -> Result<SubmissionResult> {
+        if self.session_cookie.is_none() {
+            return Err(anyhow::anyhow!("Authentication required for solution submission"));
+        }
+
+        // Step 1: Submit solution
+        let submission_id = self.submit_code(title_slug, code, lang)?;
+
+        // Step 2: Poll for results
+        let result = self.poll_submission_result(&submission_id)?;
+
+        Ok(result)
+    }
+
+    /// Submit code and return submission ID
+    fn submit_code(&self, title_slug: &str, code: &str, lang: &str) -> Result<String> {
+        let query = format!(
+            r#"{{
+                "query": "mutation submitSolution($titleSlug: String!, $code: String!, $lang: String!) {{
+                    submitSolution(titleSlug: $titleSlug, code: $code, lang: $lang) {{
+                        submissionId
+                    }}
+                }}",
+                "variables": {{
+                    "titleSlug": "{}",
+                    "code": "{}",
+                    "lang": "{}"
+                }}
+            }}"#,
+            title_slug,
+            code.replace('"', "\\\"").replace('\n', "\\n"),
+            lang
+        );
+
+        let response = self.execute_graphql_query(&query)?;
+        let graphql_response: GraphQLResponse<SubmissionData> = 
+            serde_json::from_str(&response)
+                .context("Failed to parse submission response")?;
+
+        if let Some(errors) = graphql_response.errors {
+            return Err(anyhow::anyhow!("GraphQL errors: {:?}", errors));
+        }
+
+        let data = graphql_response.data
+            .context("No data in submission response")?;
+
+        let submit_info = data.submit_solution
+            .context("No submission result in response")?;
+
+        Ok(submit_info.submission_id)
+    }
+
+    /// Poll for submission result by submission ID
+    fn poll_submission_result(&self, submission_id: &str) -> Result<SubmissionResult> {
+        let max_polls = 30; // Poll for up to 30 seconds
+        let poll_interval = std::time::Duration::from_secs(1);
+
+        for _ in 0..max_polls {
+            let query = format!(
+                r#"{{
+                    "query": "query checkSubmission($submissionId: String!) {{
+                        submissionDetails(submissionId: $submissionId) {{
+                            submissionId
+                            statusCode
+                            status
+                            runtime
+                            memory
+                            runtimePercentile
+                            memoryPercentile
+                            totalCorrect
+                            totalTestcases
+                            compileError
+                            runtimeError
+                            lastTestcase
+                            expectedOutput
+                            codeOutput
+                        }}
+                    }}",
+                    "variables": {{
+                        "submissionId": "{}"
+                    }}
+                }}"#,
+                submission_id
+            );
+
+            let response = self.execute_graphql_query(&query)?;
+            let graphql_response: GraphQLResponse<SubmissionCheckData> = 
+                serde_json::from_str(&response)
+                    .context("Failed to parse submission result response")?;
+
+            if let Some(errors) = graphql_response.errors {
+                return Err(anyhow::anyhow!("GraphQL errors: {:?}", errors));
+            }
+
+            if let Some(data) = graphql_response.data {
+                if let Some(details) = data.submission_details {
+                    // Check if submission is complete
+                    if details.status_code >= 10 { // Complete (success or error)
+                        return Ok(self.parse_submission_result(details));
+                    }
+                    // If status_code < 10, continue polling (still running)
+                }
+            }
+
+            std::thread::sleep(poll_interval);
+        }
+
+        Err(anyhow::anyhow!("Submission polling timed out"))
+    }
+
+    /// Parse API result into SubmissionResult structure
+    fn parse_submission_result(&self, details: SubmissionDetails) -> SubmissionResult {
+        let status = match details.status_code {
+            10 => SubmissionStatus::Accepted,
+            11 => SubmissionStatus::WrongAnswer,
+            12 => SubmissionStatus::MemoryLimitExceeded,
+            13 => SubmissionStatus::TimeLimitExceeded,
+            14 => SubmissionStatus::RuntimeError,
+            15 => SubmissionStatus::CompileError,
+            16 => SubmissionStatus::OutputLimitExceeded,
+            20 => SubmissionStatus::InternalError,
+            _ => SubmissionStatus::Unknown,
+        };
+
+        let runtime = details.runtime
+            .and_then(|r| r.parse::<u32>().ok());
+
+        let memory = details.memory
+            .and_then(|m| m.parse::<f64>().ok());
+
+        let failed_test_case = if status != SubmissionStatus::Accepted {
+            let mut failure_info = Vec::new();
+            
+            if let Some(input) = details.last_testcase {
+                failure_info.push(format!("Input: {}", input));
+            }
+            if let Some(expected) = details.expected_output {
+                failure_info.push(format!("Expected: {}", expected));
+            }
+            if let Some(actual) = details.code_output {
+                failure_info.push(format!("Actual: {}", actual));
+            }
+            
+            if !failure_info.is_empty() {
+                Some(failure_info.join("\n"))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        SubmissionResult {
+            status,
+            runtime,
+            memory,
+            runtime_percentile: details.runtime_percentile,
+            memory_percentile: details.memory_percentile,
+            total_correct: details.total_correct,
+            total_testcases: details.total_testcases,
+            failed_test_case,
+            compile_error: details.compile_error,
+            runtime_error: details.runtime_error,
         }
     }
 
@@ -561,6 +730,76 @@ mod tests {
     fn test_run_test_requires_auth() {
         let api = LeetCodeApi::new(); // No session cookie
         let result = api.run_test("two-sum", "test code", "python");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Authentication required"));
+    }
+
+    #[test]
+    fn test_parse_submission_result_accepted() {
+        let api = LeetCodeApi::new();
+        let mock_details = SubmissionDetails {
+            submission_id: "123".to_string(),
+            status_code: 10,
+            status: "Accepted".to_string(),
+            runtime: Some("16".to_string()),
+            memory: Some("12.5".to_string()),
+            runtime_percentile: Some(85.2),
+            memory_percentile: Some(91.3),
+            total_correct: Some(100),
+            total_testcases: Some(100),
+            compile_error: None,
+            runtime_error: None,
+            last_testcase: None,
+            expected_output: None,
+            code_output: None,
+        };
+
+        let result = api.parse_submission_result(mock_details);
+        assert_eq!(result.status, SubmissionStatus::Accepted);
+        assert_eq!(result.runtime, Some(16));
+        assert_eq!(result.memory, Some(12.5));
+        assert_eq!(result.runtime_percentile, Some(85.2));
+        assert_eq!(result.memory_percentile, Some(91.3));
+        assert_eq!(result.total_correct, Some(100));
+        assert_eq!(result.total_testcases, Some(100));
+    }
+
+    #[test]
+    fn test_parse_submission_result_wrong_answer() {
+        let api = LeetCodeApi::new();
+        let mock_details = SubmissionDetails {
+            submission_id: "123".to_string(),
+            status_code: 11,
+            status: "Wrong Answer".to_string(),
+            runtime: None,
+            memory: None,
+            runtime_percentile: None,
+            memory_percentile: None,
+            total_correct: Some(95),
+            total_testcases: Some(100),
+            compile_error: None,
+            runtime_error: None,
+            last_testcase: Some("[1,2,3,4,5]".to_string()),
+            expected_output: Some("[1,3,5]".to_string()),
+            code_output: Some("[1,2,3]".to_string()),
+        };
+
+        let result = api.parse_submission_result(mock_details);
+        assert_eq!(result.status, SubmissionStatus::WrongAnswer);
+        assert_eq!(result.total_correct, Some(95));
+        assert_eq!(result.total_testcases, Some(100));
+        assert!(result.failed_test_case.is_some());
+        
+        let failure_info = result.failed_test_case.unwrap();
+        assert!(failure_info.contains("Input: [1,2,3,4,5]"));
+        assert!(failure_info.contains("Expected: [1,3,5]"));
+        assert!(failure_info.contains("Actual: [1,2,3]"));
+    }
+
+    #[test]
+    fn test_submit_solution_requires_auth() {
+        let api = LeetCodeApi::new(); // No session cookie
+        let result = api.submit_solution("two-sum", "test code", "python");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Authentication required"));
     }

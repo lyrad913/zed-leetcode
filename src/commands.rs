@@ -221,14 +221,50 @@ pub fn handle_test(args: Vec<String>, worktree: Option<&Worktree>) -> Result<Sla
 
 /// Handle /leetcode-submit command  
 /// Submits current solution to LeetCode
-pub fn handle_submit(_args: Vec<String>, worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {
-    // TODO: Get current file from worktree and submit
-    let _worktree = worktree.ok_or("No active workspace found")?;
+pub fn handle_submit(args: Vec<String>, worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {
+    // Check if user is authenticated
+    if !is_user_authenticated() {
+        return Err("Please login first using /leetcode-login <session-cookie>".to_string());
+    }
+
+    // Parse optional file path from arguments
+    let file_path = if args.is_empty() {
+        // Get current file from worktree if available
+        get_current_file_path(worktree)?
+    } else {
+        // Use provided file path
+        args[0].clone()
+    };
+
+    // Extract problem information from filename
+    let (title_slug, lang) = extract_problem_info_from_path(&file_path)?;
+
+    // Read file content
+    let code = read_file_content(&file_path)?;
+
+    // Get authenticated API client
+    let config_dir = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?
+        .join(".leetcode");
     
-    Ok(SlashCommandOutput {
-        text: "Submitting current solution...".to_string(),
-        sections: vec![],
-    })
+    let auth_manager = AuthManager::new(&config_dir);
+    let session_opt = auth_manager.load_session()
+        .map_err(|e| format!("Failed to load session: {}", e))?;
+    
+    let session = session_opt.ok_or("No valid session found. Please login first.".to_string())?;
+    let api = LeetCodeApi::with_session(session);
+
+    // Submit solution
+    match api.submit_solution(&title_slug, &code, &lang) {
+        Ok(submission_result) => {
+            let output = format_submission_result(&submission_result);
+            Ok(SlashCommandOutput {
+                text: output,
+                sections: vec![],
+            })
+        },
+        Err(e) => Err(format!("Submission failed: {}", e)),
+    }
 }
 
 /// Parse command line arguments into structured format
@@ -377,12 +413,12 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_submit_no_worktree() {
+    fn test_handle_submit_no_auth() {
         let args = vec![];
         let result = handle_submit(args, None);
         
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("No active workspace found"));
+        assert!(result.unwrap_err().contains("Please login first"));
     }
 
     #[test]
@@ -718,6 +754,88 @@ fn format_test_result(result: &crate::models::TestResult) -> String {
     output
 }
 
+/// Format submission result for display
+fn format_submission_result(result: &crate::models::SubmissionResult) -> String {
+    let mut output = String::new();
+    
+    // Status header
+    output.push_str("# 🚀 Submission Results\n\n");
+    output.push_str(&format!("**Status:** {}\n", result.status));
+    
+    // Statistics
+    if let Some(total_correct) = result.total_correct {
+        if let Some(total_tests) = result.total_testcases {
+            output.push_str(&format!("**Test Cases Passed:** {}/{}\n", total_correct, total_tests));
+        }
+    }
+    
+    // Performance metrics
+    if let Some(runtime) = result.runtime {
+        output.push_str(&format!("**Runtime:** {}ms", runtime));
+        if let Some(percentile) = result.runtime_percentile {
+            output.push_str(&format!(" (beats {:.1}% of submissions)", percentile));
+        }
+        output.push_str("\n");
+    }
+    
+    if let Some(memory) = result.memory {
+        output.push_str(&format!("**Memory:** {:.1} MB", memory));
+        if let Some(percentile) = result.memory_percentile {
+            output.push_str(&format!(" (beats {:.1}% of submissions)", percentile));
+        }
+        output.push_str("\n");
+    }
+    
+    // Error details
+    if let Some(ref compile_error) = result.compile_error {
+        output.push_str("\n## Compile Error\n\n");
+        output.push_str("```\n");
+        output.push_str(compile_error);
+        output.push_str("\n```\n");
+    }
+    
+    if let Some(ref runtime_error) = result.runtime_error {
+        output.push_str("\n## Runtime Error\n\n");
+        output.push_str("```\n");
+        output.push_str(runtime_error);
+        output.push_str("\n```\n");
+    }
+    
+    if let Some(ref failed_case) = result.failed_test_case {
+        output.push_str("\n## Failed Test Case\n\n");
+        output.push_str("```\n");
+        output.push_str(failed_case);
+        output.push_str("\n```\n");
+    }
+    
+    // Success message
+    if result.status == crate::models::SubmissionStatus::Accepted {
+        output.push_str("\n🎉 **Congratulations! Your solution has been accepted!**\n");
+        output.push_str("\n✨ Your code successfully passed all test cases. Well done!\n");
+    } else {
+        output.push_str("\n💡 **Keep trying! Every attempt brings you closer to the solution.**\n");
+        
+        // Add hints based on status
+        match result.status {
+            crate::models::SubmissionStatus::WrongAnswer => {
+                output.push_str("\n**Hint:** Check the failed test case above and trace through your logic.\n");
+            },
+            crate::models::SubmissionStatus::TimeLimitExceeded => {
+                output.push_str("\n**Hint:** Consider optimizing your algorithm's time complexity.\n");
+            },
+            crate::models::SubmissionStatus::MemoryLimitExceeded => {
+                output.push_str("\n**Hint:** Try to reduce memory usage or optimize data structures.\n");
+            },
+            crate::models::SubmissionStatus::RuntimeError => {
+                output.push_str("\n**Hint:** Check for edge cases like null/empty inputs or index bounds.\n");
+            },
+            _ => {}
+        }
+    }
+    
+    output
+}
+
 #[cfg(test)]
 mod test_functionality_tests {
     use super::*;
@@ -805,5 +923,72 @@ mod test_functionality_tests {
         assert!(output.contains("❌ Compile Error"));
         assert!(output.contains("Compile Error"));
         assert!(output.contains("SyntaxError: invalid syntax"));
+    }
+
+    #[test]
+    fn test_format_submission_result_accepted() {
+        let result = crate::models::SubmissionResult {
+            status: crate::models::SubmissionStatus::Accepted,
+            runtime: Some(16),
+            memory: Some(12.5),
+            runtime_percentile: Some(85.2),
+            memory_percentile: Some(91.3),
+            total_correct: Some(100),
+            total_testcases: Some(100),
+            failed_test_case: None,
+            compile_error: None,
+            runtime_error: None,
+        };
+
+        let output = format_submission_result(&result);
+        assert!(output.contains("✅ Accepted"));
+        assert!(output.contains("**Test Cases Passed:** 100/100"));
+        assert!(output.contains("**Runtime:** 16ms (beats 85.2% of submissions)"));
+        assert!(output.contains("**Memory:** 12.5 MB (beats 91.3% of submissions)"));
+        assert!(output.contains("Congratulations! Your solution has been accepted!"));
+    }
+
+    #[test]
+    fn test_format_submission_result_wrong_answer() {
+        let result = crate::models::SubmissionResult {
+            status: crate::models::SubmissionStatus::WrongAnswer,
+            runtime: None,
+            memory: None,
+            runtime_percentile: None,
+            memory_percentile: None,
+            total_correct: Some(95),
+            total_testcases: Some(100),
+            failed_test_case: Some("Input: [1,2,3,4,5]\nExpected: [1,3,5]\nActual: [1,2,3]".to_string()),
+            compile_error: None,
+            runtime_error: None,
+        };
+
+        let output = format_submission_result(&result);
+        assert!(output.contains("❌ Wrong Answer"));
+        assert!(output.contains("**Test Cases Passed:** 95/100"));
+        assert!(output.contains("Failed Test Case"));
+        assert!(output.contains("Input: [1,2,3,4,5]"));
+        assert!(output.contains("Check the failed test case above"));
+    }
+
+    #[test]
+    fn test_format_submission_result_time_limit() {
+        let result = crate::models::SubmissionResult {
+            status: crate::models::SubmissionStatus::TimeLimitExceeded,
+            runtime: None,
+            memory: None,
+            runtime_percentile: None,
+            memory_percentile: None,
+            total_correct: Some(50),
+            total_testcases: Some(100),
+            failed_test_case: None,
+            compile_error: None,
+            runtime_error: None,
+        };
+
+        let output = format_submission_result(&result);
+        assert!(output.contains("⏰ Time Limit Exceeded"));
+        assert!(output.contains("**Test Cases Passed:** 50/100"));
+        assert!(output.contains("optimizing your algorithm's time complexity"));
     }
 }

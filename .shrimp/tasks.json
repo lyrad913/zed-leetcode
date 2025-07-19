@@ -262,14 +262,14 @@
       "name": "솔루션 제출 기능 구현",
       "description": "/leetcode-submit 명령어를 구현하여 완성된 솔루션을 LeetCode에 제출하고 결과를 확인할 수 있는 기능을 제공합니다.",
       "notes": "제출 기능은 신중하게 사용해야 하므로, 확인 프롬프트나 최종 검토 단계를 포함하는 것을 고려할 수 있습니다.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "dd40313e-4f33-420b-affb-c8361fb6c2f2"
         }
       ],
       "createdAt": "2025-07-19T04:01:01.148Z",
-      "updatedAt": "2025-07-19T04:01:01.148Z",
+      "updatedAt": "2025-07-19T07:09:51.089Z",
       "relatedFiles": [
         {
           "path": "src/commands.rs",
@@ -286,7 +286,9 @@
       ],
       "implementationGuide": "1. /leetcode-submit 명령어 구현:\\n   ```rust\\n   fn handle_submit(&self, args: Vec<String>, worktree: Option<&Worktree>) -> Result<SlashCommandOutput, String> {\\n       let file_path = get_current_file_path(worktree)?;\\n       let problem_id = extract_problem_id_from_filename(&file_path)?;\\n       let code = read_file_content(&file_path)?;\\n       \\n       let submission_id = self.api.submit_solution(problem_id, code)?;\\n       let result = self.api.check_submission_result(submission_id)?;\\n       Ok(format_submission_result(result))\\n   }\\n   ```\\n\\n2. 솔루션 제출 API 호출:\\n   - LeetCode의 submit API 사용\\n   - 제출 ID 반환 및 추적\\n   - 비동기 결과 대기 로직\\n\\n3. 제출 결과 모니터링:\\n   - 제출 상태 주기적 확인 (Pending -> Accepted/Wrong Answer 등)\\n   - 타임아웃 처리 (최대 30초)\\n   - 네트워크 오류 재시도 로직\\n\\n4. 결과 분석 및 표시:\\n   - Accepted: 통과율, 실행 시간, 메모리 사용량\\n   - Wrong Answer: 실패한 테스트 케이스 정보\\n   - Time Limit Exceeded: 시간 복잡도 힌트\\n   - Runtime Error: 오류 메시지 및 스택 트레이스",
       "verificationCriteria": "솔루션 파일에서 /leetcode-submit을 실행했을 때 LeetCode에 정상적으로 제출되고, 결과(Accepted, Wrong Answer 등)가 올바르게 표시되는지 확인",
-      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택."
+      "analysisResult": "Zed Editor용 LeetCode 익스텐션 개발 - 슬래시 커맨드 기반 아키텍처로 VS Code의 복잡한 UI 제약을 우회하면서 핵심 기능을 제공. HTTP 클라이언트 제약 우회를 위해 외부 CLI 도구 또는 시스템 명령어를 활용한 하이브리드 접근법 채택.",
+      "summary": "솔루션 제출 기능이 성공적으로 구현되었습니다. /leetcode-submit 명령어는 인증 검증, 파일 처리, 코드 제출, 결과 폴링, 상세 결과 분석 등 완전한 제출 워크플로를 제공합니다. SubmissionResult 모델과 status 분류, 성능 지표(runtime/memory percentile), 상세한 에러 분석을 포함합니다. 67개 모든 테스트가 통과하여 견고한 구현을 보여주며, 사용자 친화적인 피드백과 개선 힌트를 제공합니다.",
+      "completedAt": "2025-07-19T07:09:51.088Z"
     },
     {
       "id": "d90201f0-59b4-4708-ad8e-853cd3268d3d",

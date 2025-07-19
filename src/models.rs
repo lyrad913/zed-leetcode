@@ -276,4 +276,131 @@ mod tests {
         assert_eq!(result.status, TestStatus::RuntimeError);
         assert!(result.failed_test_case.is_some());
     }
+
+    #[test]
+    fn test_submission_status_display() {
+        let status = SubmissionStatus::Accepted;
+        assert_eq!(status.to_string(), "✅ Accepted");
+        
+        let status2 = SubmissionStatus::WrongAnswer;
+        assert_eq!(status2.to_string(), "❌ Wrong Answer");
+    }
+
+    #[test]
+    fn test_submission_result_success() {
+        let result = SubmissionResult {
+            status: SubmissionStatus::Accepted,
+            runtime: Some(16),
+            memory: Some(12.5),
+            runtime_percentile: Some(85.2),
+            memory_percentile: Some(91.3),
+            total_correct: Some(100),
+            total_testcases: Some(100),
+            failed_test_case: None,
+            compile_error: None,
+            runtime_error: None,
+        };
+
+        assert_eq!(result.status, SubmissionStatus::Accepted);
+        assert_eq!(result.runtime, Some(16));
+        assert_eq!(result.runtime_percentile, Some(85.2));
+    }
+}
+
+/// Submission execution status
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SubmissionStatus {
+    Accepted,
+    WrongAnswer,
+    TimeLimitExceeded,
+    MemoryLimitExceeded,
+    RuntimeError,
+    CompileError,
+    OutputLimitExceeded,
+    InternalError,
+    Pending,
+    Unknown,
+}
+
+impl std::fmt::Display for SubmissionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SubmissionStatus::Accepted => write!(f, "✅ Accepted"),
+            SubmissionStatus::WrongAnswer => write!(f, "❌ Wrong Answer"),
+            SubmissionStatus::TimeLimitExceeded => write!(f, "⏰ Time Limit Exceeded"),
+            SubmissionStatus::MemoryLimitExceeded => write!(f, "💾 Memory Limit Exceeded"),
+            SubmissionStatus::RuntimeError => write!(f, "❌ Runtime Error"),
+            SubmissionStatus::CompileError => write!(f, "❌ Compile Error"),
+            SubmissionStatus::OutputLimitExceeded => write!(f, "📄 Output Limit Exceeded"),
+            SubmissionStatus::InternalError => write!(f, "🔧 Internal Error"),
+            SubmissionStatus::Pending => write!(f, "⏳ Pending"),
+            SubmissionStatus::Unknown => write!(f, "❓ Unknown"),
+        }
+    }
+}
+
+/// Submission result
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubmissionResult {
+    pub status: SubmissionStatus,
+    pub runtime: Option<u32>,  // milliseconds
+    pub memory: Option<f64>,   // MB
+    pub runtime_percentile: Option<f64>,
+    pub memory_percentile: Option<f64>,
+    pub total_correct: Option<u32>,
+    pub total_testcases: Option<u32>,
+    pub failed_test_case: Option<String>,
+    pub compile_error: Option<String>,
+    pub runtime_error: Option<String>,
+}
+
+/// Submission response data structure
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubmissionData {
+    #[serde(rename = "submitSolution")]
+    pub submit_solution: Option<SubmissionInfo>,
+}
+
+/// Submission information from API
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubmissionInfo {
+    #[serde(rename = "submissionId")]
+    pub submission_id: String,
+}
+
+/// Submission check response data
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubmissionCheckData {
+    #[serde(rename = "submissionDetails")]
+    pub submission_details: Option<SubmissionDetails>,
+}
+
+/// Detailed submission information
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubmissionDetails {
+    #[serde(rename = "submissionId")]
+    pub submission_id: String,
+    #[serde(rename = "statusCode")]
+    pub status_code: u32,
+    pub status: String,
+    pub runtime: Option<String>,
+    pub memory: Option<String>,
+    #[serde(rename = "runtimePercentile")]
+    pub runtime_percentile: Option<f64>,
+    #[serde(rename = "memoryPercentile")]
+    pub memory_percentile: Option<f64>,
+    #[serde(rename = "totalCorrect")]
+    pub total_correct: Option<u32>,
+    #[serde(rename = "totalTestcases")]
+    pub total_testcases: Option<u32>,
+    #[serde(rename = "compileError")]
+    pub compile_error: Option<String>,
+    #[serde(rename = "runtimeError")]
+    pub runtime_error: Option<String>,
+    #[serde(rename = "lastTestcase")]
+    pub last_testcase: Option<String>,
+    #[serde(rename = "expectedOutput")]
+    pub expected_output: Option<String>,
+    #[serde(rename = "codeOutput")]
+    pub code_output: Option<String>,
 }
